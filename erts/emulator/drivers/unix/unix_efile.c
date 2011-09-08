@@ -22,6 +22,12 @@
 #ifdef HAVE_CONFIG_H
 #  include "config.h"
 #endif
+#if defined(HAVE_POSIX_FALLOCATE) && !defined(__sun) && !defined(__sun__)
+#define _XOPEN_SOURCE 600
+#endif
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE /* for Linux fallocate */
+#endif
 #include "sys.h"
 #include "erl_driver.h"
 #include "erl_efile.h"
@@ -38,9 +44,13 @@
 #define DARWIN 1
 #endif
 
-#ifdef DARWIN
+#if defined(DARWIN) || defined(HAVE_LINUX_FALLOC_H) || defined(HAVE_POSIX_FALLOCATE)
 #include <fcntl.h>
-#endif /* DARWIN */
+#endif
+
+#ifdef HAVE_LINUX_FALLOC_H
+#include <linux/falloc.h>
+#endif
 
 #ifdef VXWORKS
 #include <ioLib.h>
@@ -1462,5 +1472,47 @@ efile_fadvise(Efile_error* errInfo, int fd, Sint64 offset,
     return check_error(posix_fadvise(fd, offset, length, advise), errInfo);
 #else
     return check_error(0, errInfo);
+#endif
+}
+
+int
+efile_fallocate(Efile_error* errInfo, int fd, Sint64 newFileLength)
+{
+#if defined HAVE_FALLOCATE
+    /* Linux specific, more efficient than posix_fallocate. */
+    int error = fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, newFileLength);
+
+#if defined HAVE_POSIX_FALLOCATE
+    /* fallback to posix_fallocate if available */
+    if (error != 0) {
+        error = posix_fallocate(fd, 0, newFileLength);
+    }
+#endif
+
+    return check_error(error, errInfo);
+#elif defined F_PREALLOCATE
+    /* Mac OS X specific, equivalent to posix_fallocate. */
+    int ret;
+    fstore_t fs;
+
+    memset(&fs, 0, sizeof(fs));
+    fs.fst_flags = F_ALLOCATECONTIG;
+    fs.fst_posmode = F_PEOFPOSMODE;
+    fs.fst_length = newFileLength;
+
+    ret = fcntl(fd, F_PREALLOCATE, &fs);
+
+    if (-1 == ret) {
+        fs.fst_flags = F_ALLOCATEALL;
+        ret = fcntl(fd, F_PREALLOCATE, &fs);
+    }
+
+    return check_error(ret, errInfo);
+#elif defined HAVE_POSIX_FALLOCATE
+    /* Other Unixes, use posix_fallocate if available. */
+    return check_error(posix_fallocate(fd, 0, newFileLength), errInfo);
+#else
+    errno = ENOSYS;
+    return check_error(-1, errInfo);
 #endif
 }

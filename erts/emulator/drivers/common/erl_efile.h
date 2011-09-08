@@ -162,3 +162,4 @@ int efile_symlink(Efile_error* errInfo, char* old, char* new);
 int efile_may_openfile(Efile_error* errInfo, char *name);
 int efile_fadvise(Efile_error* errInfo, int fd, Sint64 offset, Sint64 length,
 		  int advise);
+int efile_fallocate(Efile_error* errInfo, int fd, Sint64 newFileLength);

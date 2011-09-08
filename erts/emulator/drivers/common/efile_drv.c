@@ -55,7 +55,9 @@
 #define FILE_READ_LINE          29
 #define FILE_FDATASYNC          30
 #define FILE_FADVISE            31
-#define FILE_EXISTS             33
+#define FILE_EXISTS             32
+#define FILE_FALLOCATE          33
+
 
 /* Return codes */
 
@@ -396,6 +398,9 @@ struct t_data
 	    Sint64 length;
 	    int advise;
 	} fadvise;
+	struct {
+	    Sint64 newFileLength;
+	} fallocate;
     } c;
     char b[1];
 };
@@ -1716,6 +1721,16 @@ static void invoke_fadvise(void *data)
     d->result_ok = efile_fadvise(&d->errInfo, fd, offset, length, advise);
 }
 
+static void invoke_fallocate(void *data)
+{
+    struct t_data *d = (struct t_data *) data;
+    int fd = (int) d->fd;
+    off_t newFileLength = (off_t) d->c.fallocate.newFileLength;
+
+    d->again = 0;
+    d->result_ok = efile_fallocate(&d->errInfo, fd, newFileLength);
+}
+
 static void free_readdir(void *data)
 {
     struct t_data *d = (struct t_data *) data;
@@ -1994,25 +2009,26 @@ file_async_ready(ErlDrvData e, ErlDrvThreadData data)
 	  }
 	  free_data(data);
 	  break;
-      case FILE_MKDIR:
-      case FILE_RMDIR:
-      case FILE_CHDIR:
-      case FILE_DELETE:
-      case FILE_FDATASYNC:
-      case FILE_FSYNC:
-      case FILE_TRUNCATE:
-      case FILE_LINK:
-      case FILE_SYMLINK:
-      case FILE_RENAME:
-      case FILE_WRITE_INFO:
-      case FILE_FADVISE:
-      case FILE_EXISTS:
-	reply(desc, d->result_ok, &d->errInfo);
-	free_data(data);
-	break;
-      case FILE_ALTNAME:
-      case FILE_PWD:
-      case FILE_READLINK:
+    case FILE_MKDIR:
+    case FILE_RMDIR:
+    case FILE_CHDIR:
+    case FILE_DELETE:
+    case FILE_FDATASYNC:
+    case FILE_FSYNC:
+    case FILE_TRUNCATE:
+    case FILE_LINK:
+    case FILE_SYMLINK:
+    case FILE_RENAME:
+    case FILE_WRITE_INFO:
+    case FILE_FADVISE:
+    case FILE_EXISTS:
+         reply(desc, d->result_ok, &d->errInfo);
+        free_data(data);
+        break;
+    case FILE_FALLOCATE: 
+    case FILE_ALTNAME:
+    case FILE_PWD:
+    case FILE_READLINK:
         {
 	    int length;
 	    char *resbuf = d->b;
@@ -2461,6 +2477,19 @@ file_output(ErlDrvData e, char* buf, int count)
         d->invoke = invoke_file_exists;
         d->free = free_data;
         d->level = 2;
+        goto done;
+    }
+
+    case FILE_FALLOCATE:
+    {
+        d = EF_SAFE_ALLOC(sizeof(struct t_data));
+
+        d->fd = fd;
+        d->command = command;
+        d->invoke = invoke_fallocate;
+        d->free = free_data;
+        d->level = 2;
+        d->c.fallocate.newFileLength = get_int64((uchar*) buf);
         goto done;
     }
 
