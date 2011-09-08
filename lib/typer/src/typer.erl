@@ -539,7 +539,7 @@ get_type_string(F, A, Info, Mode) ->
       case {Mode, Type} of
 	{file, {contract, _}} -> "";
 	_ ->
-	  Prefix = lists:concat(["-spec ", F]),
+	  Prefix = lists:concat(["-spec ", atom_to_string(F)]),
 	  lists:concat([Prefix, TypeStr, "."])
       end;
     true ->
@@ -547,6 +547,9 @@ get_type_string(F, A, Info, Mode) ->
       lists:concat([Prefix, TypeStr, "."])
   end.
  
+atom_to_string(Atom) ->
+  lists:flatten(io_lib:format("~w", [Atom])).
+
 show_type_info(File, Info) ->
   io:format("\n%% File: ~p\n%% ", [File]),
   OutputString = lists:concat(["~.", length(File)+8, "c~n"]),
