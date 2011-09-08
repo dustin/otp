@@ -56,6 +56,7 @@
 
 %% Constante used in internal state definition
 -define(CONNECTION_TIMEOUT, 60*1000).
+-define(ACCEPT_TIMEOUT,     60*1000).
 -define(DEFAULT_MODE,       passive).
 -define(PROGRESS_DEFAULT,   ignore).
 
@@ -2013,7 +2014,9 @@ connect2(Host, Port, IpFam, Timeout) ->
 
 accept_data_connection(#state{mode = active,
 			      dsock = {lsock, LSock}} = State) ->
-    {ok, Socket} = gen_tcp:accept(LSock),
+    %% Force crash if server does not connect to the data socket
+    %% (should be able to give accept timeout through options).
+    {ok, Socket} = gen_tcp:accept(LSock, ?ACCEPT_TIMEOUT),
     gen_tcp:close(LSock),
     State#state{dsock = Socket};
 
