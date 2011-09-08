@@ -182,7 +182,7 @@ process_chunks(F) ->
 	    Literals = beam_disasm_literals(LiteralBin),
 	    Code = beam_disasm_code(CodeBin, Atoms, mk_imports(ImportsList),
 				    StrBin, Lambdas, Literals, Module),
-	    Attributes = optional_chunk(F, attributes),
+	    Attributes = optional_chunk(F, "Attr"),
 	    CompInfo = 
 		case optional_chunk(F, "CInf") of
 		    none -> none;
