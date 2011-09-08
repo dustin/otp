@@ -69,6 +69,7 @@ static time_t current_time(EpmdVars*);
 
 static Connection *conn_init(EpmdVars*);
 static int conn_open(EpmdVars*,int);
+static int conn_local_access_check(int fd);
 static int conn_close_fd(EpmdVars*,int);
 
 static void node_init(EpmdVars*);
@@ -130,7 +131,7 @@ void run(EpmdVars *g)
 	      epmd_cleanup_exit(g,1);
 	    }
 	  else if (ret == 0)
-#elif !defined(EPMD6)
+#else
 	  if ((addr.EPMD_S_ADDR = inet_addr(token)) == INADDR_NONE)
 #endif
 	    {
@@ -818,15 +819,6 @@ static int conn_open(EpmdVars *g,int fd)
 
   for (i = 0; i < g->max_conn; i++) {
     if (g->conn[i].open == EPMD_FALSE) {
-      struct sockaddr_in si;
-      struct sockaddr_in di;
-#ifdef HAVE_SOCKLEN_T
-      socklen_t st;
-#else
-      int st;
-#endif
-      st = sizeof(si);
-
       g->active_conn++;
       s = &g->conn[i];
      
@@ -837,20 +829,7 @@ static int conn_open(EpmdVars *g,int fd)
       s->open = EPMD_TRUE;
       s->keep = EPMD_FALSE;
 
-      /* Determine if connection is from localhost */
-      if (getpeername(s->fd,(struct sockaddr*) &si,&st) ||
-	  st < sizeof(si)) {
-	  /* Failure to get peername is regarded as non local host */
-	  s->local_peer = EPMD_FALSE;
-      } else {
-	  /* Only 127.x.x.x and connections from the host's IP address
-	     allowed, no false positives */
-	  s->local_peer =
-	      (((((unsigned) ntohl(si.sin_addr.s_addr)) & 0xFF000000U) ==
-	       0x7F000000U) ||
-	       (getsockname(s->fd,(struct sockaddr*) &di,&st) ?
-	       EPMD_FALSE : si.sin_addr.s_addr == di.sin_addr.s_addr));
-      }
+      s->local_peer = conn_local_access_check(s->fd);
       dbg_tty_printf(g,2,(s->local_peer) ? "Local peer connected" :
 		     "Non-local peer connected");
 
@@ -874,6 +853,45 @@ static int conn_open(EpmdVars *g,int fd)
   dbg_tty_printf(g,0,"failed opening connection on file descriptor %d",fd);
   close(fd);
   return EPMD_FALSE;
+}
+
+static int conn_local_access_check(int fd)
+{
+  struct EPMD_SOCKADDR_IN si;
+  struct EPMD_SOCKADDR_IN di;
+#ifdef HAVE_SOCKLEN_T
+  socklen_t st;
+#else
+  int st;
+#endif
+  st = sizeof(si);
+
+  /* Determine if connection is from localhost */
+  if (getpeername(fd,(struct sockaddr*) &si,&st) ||
+	  st < sizeof(si)) {
+	  /* Failure to get peername is regarded as non local host */
+	  return EPMD_FALSE;
+  }
+
+  /* Only 127.x.x.x and connections from the host's IP address
+	 allowed, no false positives */
+#if defined(HAVE_IN6) && defined(AF_INET6)
+  if (IN6_IS_ADDR_LOOPBACK(&si.sin6_addr))
+	  return EPMD_TRUE;
+#else
+  if ((((unsigned) ntohl(si.sin_addr.s_addr)) & 0xFF000000U) ==
+	  0x7F000000U)
+	  return EPMD_TRUE;
+#endif
+
+  if (getsockname(fd,(struct sockaddr*) &di,&st))
+	  return EPMD_FALSE;
+
+#if defined(HAVE_IN6) && defined(AF_INET6)
+  return IN6_ARE_ADDR_EQUAL(&si.sin6_addr, &di.sin6_addr);
+#else
+  return si.sin_addr.s_addr == di.sin_addr.s_addr;
+#endif
 }
 
 static int conn_close_fd(EpmdVars *g,int fd)

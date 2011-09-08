@@ -165,7 +165,7 @@
 /* ************************************************************************ */
 /* Macros that let us use IPv6                                              */
 
-#if defined(HAVE_IN6) && defined(AF_INET6) && defined(EPMD6)
+#if defined(HAVE_IN6) && defined(AF_INET6)
 
 #define EPMD_SOCKADDR_IN sockaddr_in6
 #define EPMD_IN_ADDR in6_addr
