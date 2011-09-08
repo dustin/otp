@@ -26,8 +26,10 @@
 
 %% Generic file contents operations
 -export([open/2, close/1, datasync/1, sync/1, advise/4, position/2, truncate/1,
-	 write/2, pwrite/2, pwrite/3, read/2, read_line/1, pread/2, pread/3, copy/3]).
--export([allocate/2]).
+	 write/2, pwrite/2, pwrite/3, read/2, read_line/1, pread/2, pread/3, 
+         copy/3, allocate/2, sendfile/5]).
+
+
 
 %% Specialized file operations
 -export([open/1, open/3]).
@@ -102,6 +104,7 @@
 -define(FILE_ADVISE,           31).
 -define(FILE_EXISTS,           32).
 -define(FILE_ALLOCATE,         33).
+-define(FILE_SENDFILE,         34).
 
 
 %% Driver responses
@@ -548,6 +551,21 @@ write_file(_, _) ->
     {error, badarg}.
     
 
+%% Returns {error, Reason} | {ok, BytesCopied}
+sendfile(#file_descriptor{module = ?MODULE, data = {Port, _}},
+	 DestFD, Offset, Bytes, ChunkSize) ->
+    ok = drv_command(Port, <<?FILE_SENDFILE, DestFD:32, Offset:64, Bytes:64,
+			     ChunkSize:64>>),
+    Self = self(),
+    %% Should we use a ref()?
+    receive
+	{efile_reply, Self, Port, {ok, _Written}=OKRes}->
+	    OKRes;
+	{efile_reply, Self, Port, {error, _PosixError}=Error}->
+	    Error;
+	Unexpected ->
+	    Unexpected
+    end.
 
 %%%-----------------------------------------------------------------
 %%% Functions operating on files without handle to the file. ?DRV.
