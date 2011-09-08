@@ -83,6 +83,7 @@ MODULES= \
 	gen_event \
 	gen_fsm \
 	gen_server \
+	gen_stream \
 	io \
 	io_lib \
 	io_lib_format \
@@ -226,6 +227,7 @@ $(EBIN)/erl_tar.beam: ../../kernel/include/file.hrl
 $(EBIN)/file_sorter.beam: ../../kernel/include/file.hrl
 $(EBIN)/filelib.beam: ../../kernel/include/file.hrl
 $(EBIN)/filename.beam: ../../kernel/include/file.hrl
+$(EBIN)/gen_stream.beam: ../../kernel/include/file.hrl
 $(EBIN)/qlc_pt.beam: ../include/ms_transform.hrl
 $(EBIN)/shell.beam: ../../kernel/include/file.hrl
 $(EBIN)/zip.beam: ../include/zip.hrl ../../kernel/include/file.hrl
