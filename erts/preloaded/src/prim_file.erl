@@ -868,7 +868,7 @@ exists_int(Port, File) ->
 
 
 %% Opens a driver port and converts any problems into {error, emfile}.
-%% Returns {ok, Port} when succesful.
+%% Returns {ok, Port} when successful.
 
 drv_open(Driver, Portopts) ->
     try erlang:open_port({spawn, Driver}, Portopts) of
