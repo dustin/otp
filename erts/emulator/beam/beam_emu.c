@@ -1045,6 +1045,106 @@ init_emulator(void)
 #  define REG_tmp_arg2
 #endif
 
+#define DTRACE_TERM_BUF_SIZE 256
+
+static inline void
+dtrace_fun_decode(Process *process, Eterm module, Eterm function,
+                  char *process_name, char *module_name, char *function_name,
+                  int *f_offset) {
+    char *p;
+
+    erts_snprintf(process_name, DTRACE_TERM_BUF_SIZE, "%T", process->id);
+    erts_snprintf(module_name, DTRACE_TERM_BUF_SIZE, "%T", module);
+    erts_snprintf(function_name, DTRACE_TERM_BUF_SIZE, "%T", function);
+    *f_offset = 0;
+
+    /* I'm not quite sure how these function names are synthesized,
+       but they always seem to be in the form of '-name/arity-fun-0'
+       so I'm chopping them up */
+    p = strchr(function_name, '/');
+    if (p) {
+        *p = 0;
+    }
+    if (function_name[0] == '\'' && function_name[1] == '-') {
+        *f_offset = 2;
+    }
+}
+
+#define DTRACE_CALL(p, m, f, a)                      \
+    if (ERLANG_FUNCTION_ENTRY_ENABLED()) {           \
+        char process_name[DTRACE_TERM_BUF_SIZE];     \
+        char module_name[DTRACE_TERM_BUF_SIZE];      \
+        char function_name[DTRACE_TERM_BUF_SIZE];    \
+        int foff;                                    \
+        dtrace_fun_decode(p, m, f, process_name,     \
+                          module_name,               \
+                          function_name, &foff);     \
+        ERLANG_FUNCTION_ENTRY(process_name,          \
+                              module_name,           \
+                              function_name + foff,  \
+                              a);                    \
+    }
+
+#define DTRACE_BIF_ENTRY(p, m, f, a)                \
+    if (ERLANG_BIF_ENTRY_ENABLED()) {               \
+        char process_name[DTRACE_TERM_BUF_SIZE];    \
+        char module_name[DTRACE_TERM_BUF_SIZE];     \
+        char function_name[DTRACE_TERM_BUF_SIZE];   \
+        int foff;                                   \
+        dtrace_fun_decode(p, m, f, process_name,    \
+                          module_name,              \
+                          function_name, &foff);    \
+        ERLANG_BIF_ENTRY(process_name,              \
+                         module_name,               \
+                         function_name + foff,      \
+                         a);                        \
+    }
+
+#define DTRACE_BIF_RETURN(p, m, f, a)               \
+    if (ERLANG_BIF_RETURN_ENABLED()) {              \
+        char process_name[DTRACE_TERM_BUF_SIZE];    \
+        char module_name[DTRACE_TERM_BUF_SIZE];     \
+        char function_name[DTRACE_TERM_BUF_SIZE];   \
+        int foff;                                   \
+        dtrace_fun_decode(p, m, f, process_name,    \
+                          module_name,              \
+                          function_name, &foff);    \
+        ERLANG_BIF_RETURN(process_name,             \
+                          module_name,              \
+                          function_name + foff,     \
+                          a);                       \
+    }
+
+#define DTRACE_NIF_ENTRY(p, m, f, a)                \
+    if (ERLANG_NIF_ENTRY_ENABLED()) {               \
+        char process_name[DTRACE_TERM_BUF_SIZE];    \
+        char module_name[DTRACE_TERM_BUF_SIZE];     \
+        char function_name[DTRACE_TERM_BUF_SIZE];   \
+        int foff;                                   \
+        dtrace_fun_decode(p, m, f, process_name,    \
+                          module_name,              \
+                          function_name, &foff);    \
+        ERLANG_NIF_ENTRY(process_name,              \
+                         module_name,               \
+                         function_name + foff,      \
+                         a);                        \
+    }
+
+#define DTRACE_NIF_RETURN(p, m, f, a)               \
+    if (ERLANG_NIF_RETURN_ENABLED()) {              \
+        char process_name[DTRACE_TERM_BUF_SIZE];    \
+        char module_name[DTRACE_TERM_BUF_SIZE];     \
+        char function_name[DTRACE_TERM_BUF_SIZE];   \
+        int foff;                                   \
+        dtrace_fun_decode(p, m, f, process_name,    \
+                          module_name,              \
+                          function_name, &foff);    \
+        ERLANG_NIF_RETURN(process_name,             \
+                          module_name,              \
+                          function_name + foff,     \
+                          a);                       \
+    }
+
 /*
  * process_main() is called twice:
  * The first call performs some initialisation, including exporting
@@ -3101,6 +3201,8 @@ void process_main(void)
 	   */
      	 BifFunction vbf;
 
+	 DTRACE_NIF_ENTRY(c_p, (Eterm)I[-3], (Eterm)I[-2], (Uint)I[-1]);
+
 	 c_p->current = I-3; /* current and vbf set to please handle_error */ 
 	 SWAPOUT;
 	 c_p->fcalls = FCALLS - 1;
@@ -3120,8 +3222,11 @@ void process_main(void)
 	 }
 	 ASSERT(!ERTS_PROC_IS_EXITING(c_p) || is_non_value(tmp_arg1));
 	 PROCESS_MAIN_CHK_LOCKS(c_p);
+
+	 DTRACE_NIF_RETURN(c_p, (Eterm)I[-3], (Eterm)I[-2], (Uint)I[-1]);
+
 	 goto apply_bif_or_nif_epilogue;
-	 
+
  OpCase(apply_bif):
 	/*
 	 * At this point, I points to the code[3] in the export entry for
@@ -3139,6 +3244,9 @@ void process_main(void)
 	c_p->arity = 0;		/* To allow garbage collection on ourselves
 				 * (check_process_code/2).
 				 */
+
+	DTRACE_BIF_ENTRY(c_p, (Eterm)I[-3], (Eterm)I[-2], (Uint)I[-1]);
+
 	SWAPOUT;
 	c_p->fcalls = FCALLS - 1;
 	vbf = (BifFunction) Arg(0);
@@ -3184,6 +3292,9 @@ void process_main(void)
 		break;
 	    }
 	}
+
+	DTRACE_BIF_RETURN(c_p, (Eterm)I[-3], (Eterm)I[-2], (Uint)I[-1]);
+
 apply_bif_or_nif_epilogue:
 	ERTS_SMP_REQ_PROC_MAIN_LOCK(c_p);
 	ERTS_HOLE_CHECK(c_p);
@@ -6086,37 +6197,6 @@ hibernate(Process* c_p, Eterm module, Eterm function, Eterm args, Eterm* reg)
     c_p->current = bif_export[BIF_hibernate_3]->code;
     return 1;
 }
-
-static inline void
-dtrace_fun_entry(Process *process, Eterm module, Eterm function, int arity) {
-    char module_name[256];
-    char function_name[256];
-    char process_name[64];
-    int f_offset = 0;
-
-    erts_snprintf(process_name, sizeof(process_name), "%T", process->id);
-    erts_snprintf(module_name, sizeof(module_name), "%T", module);
-    erts_snprintf(function_name, sizeof(function_name), "%T", function);
-
-    /* I'm not quite sure how these function names are synthesized,
-       but they always seem to be in the form of '-name/arity-fun-0'
-       so I'm chopping them up */
-    char *p = strchr(function_name, '/');
-    if (p) {
-        *p = 0;
-    }
-    if (function_name[0] == '\'' && function_name[1] == '-') {
-        f_offset = 2;
-    }
-    ERLANG_FUNCTION_ENTRY(process_name,
-                          module_name, function_name + f_offset, arity);
-}
-
-#define DTRACE_CALL(p, m, f, a)                 \
-    if (ERLANG_FUNCTION_ENTRY_ENABLED()) { \
-        dtrace_fun_entry(p, m, f, a);           \
-    }
-
 
 static BeamInstr*
 call_fun(Process* p,		/* Current process. */
