@@ -41,6 +41,9 @@
 #include "hipe_bif1.h"
 #endif
 
+#include <assert.h>
+#include "erlang_dtrace.h"
+
 /* #define HARDDEBUG 1 */
 
 #if defined(NO_JUMP_TABLE)
@@ -6084,6 +6087,37 @@ hibernate(Process* c_p, Eterm module, Eterm function, Eterm args, Eterm* reg)
     return 1;
 }
 
+static inline void
+dtrace_fun_entry(Process *process, Eterm module, Eterm function, int arity) {
+    char module_name[256];
+    char function_name[256];
+    char process_name[64];
+    int f_offset = 0;
+
+    erts_snprintf(process_name, sizeof(process_name), "%T", process->id);
+    erts_snprintf(module_name, sizeof(module_name), "%T", module);
+    erts_snprintf(function_name, sizeof(function_name), "%T", function);
+
+    /* I'm not quite sure how these function names are synthesized,
+       but they always seem to be in the form of '-name/arity-fun-0'
+       so I'm chopping them up */
+    char *p = strchr(function_name, '/');
+    if (p) {
+        *p = 0;
+    }
+    if (function_name[0] == '\'' && function_name[1] == '-') {
+        f_offset = 2;
+    }
+    ERLANG_FUNCTION_ENTRY(process_name,
+                          module_name, function_name + f_offset, arity);
+}
+
+#define DTRACE_CALL(p, m, f, a)                 \
+    if (ERLANG_FUNCTION_ENTRY_ENABLED()) { \
+        dtrace_fun_entry(p, m, f, a);           \
+    }
+
+
 static BeamInstr*
 call_fun(Process* p,		/* Current process. */
 	 int arity,		/* Number of arguments for Fun. */
@@ -6108,11 +6142,16 @@ call_fun(Process* p,		/* Current process. */
 	Eterm* var_ptr;
 	int actual_arity;
 	unsigned num_free;
+	BeamInstr *fptr;
 
 	fe = funp->fe;
 	num_free = funp->num_free;
 	code_ptr = fe->address;
 	actual_arity = (int) code_ptr[-1];
+
+	fptr = find_function_from_pc(code_ptr);
+
+	DTRACE_CALL(p, fe->module, (Eterm)fptr[1], actual_arity);
 
 	if (actual_arity == arity+num_free) {
 	    if (num_free == 0) {
@@ -6132,7 +6171,7 @@ call_fun(Process* p,		/* Current process. */
 	} else {
 	    /*
 	     * Something wrong here. First build a list of the arguments.
-	     */  
+	     */
 
 	    if (is_non_value(args)) {
 		Uint sz = 2 * arity;
@@ -6206,11 +6245,12 @@ call_fun(Process* p,		/* Current process. */
 	actual_arity = (int) ep->code[2];
 
 	if (arity == actual_arity) {
+	    DTRACE_CALL(p, ep->code[0], ep->code[1], (Uint)ep->code[2]);
 	    return ep->address;
 	} else {
 	    /*
 	     * Wrong arity. First build a list of the arguments.
-	     */  
+	     */
 
 	    if (is_non_value(args)) {
 		args = NIL;
@@ -6261,6 +6301,7 @@ call_fun(Process* p,		/* Current process. */
 	    reg[1] = function;
 	    reg[2] = args;
 	}
+	DTRACE_CALL(p, module, function, arity);
 	return ep->address;
     } else {
     badfun:
